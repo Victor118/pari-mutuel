@@ -1,0 +1,7 @@
+# Binaires compilés
+/pari-mutuel
+*.exe
+
+# Sortie de couverture
+*.out
+coverage.*
