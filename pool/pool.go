@@ -79,7 +79,7 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount) err
 	return nil
 }
 
-func (p Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
+func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
 
 	return p.stakedByOutcome[outcome]
 }
