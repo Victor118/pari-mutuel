@@ -36,7 +36,7 @@ type Pool struct {
 	Outcomes        []OutcomeID
 	State           PoolState
 	ClosesAt        time.Time
-	StakedByOutcome map[OutcomeID]Amount
+	stakedByOutcome map[OutcomeID]Amount
 }
 
 func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time) (*Pool, error) {
@@ -50,11 +50,7 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		}
 		seen[outcome] = true
 	}
-	stakedByOutcomes := make(map[OutcomeID]Amount, len(outcomes))
-
-	for _, outcomes := range outcomes {
-		stakedByOutcomes[outcomes], _ = NewAmount(0)
-	}
+	stakedByOutcome := make(map[OutcomeID]Amount, len(outcomes))
 
 	pool := &Pool{
 		ID:              poolID,
@@ -64,29 +60,26 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		Outcomes:        slices.Clone(outcomes),
 		State:           Open,
 		ClosesAt:        closesAt,
-		StakedByOutcome: stakedByOutcomes,
+		stakedByOutcome: stakedByOutcome,
 	}
 
 	return pool, nil
 }
 
 func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount) error {
-	stakedAmount, ok := p.StakedByOutcome[outcome]
-	if !ok {
-		return fmt.Errorf("%w: %v, valid outcomes: %v", ErrUnknownOutcome, outcome, p.Outcomes)
+	if !slices.Contains(p.Outcomes, outcome) {
+		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.ID)
 	}
-	newAmount, err := stakedAmount.Add(amount)
+	stakedAmount := p.stakedByOutcome[outcome]
+	total, err := stakedAmount.Add(amount)
 	if err != nil {
-		return ErrInvalidAmount
+		return fmt.Errorf("%w : amount incorrect : %v", err, amount)
 	}
-	p.StakedByOutcome[outcome] = newAmount
+	p.stakedByOutcome[outcome] = total
 	return nil
 }
 
-func (p Pool) TotalBetOnOutcome(outcome OutcomeID) (Amount, error) {
-	amount, ok := p.StakedByOutcome[outcome]
-	if !ok {
-		return Amount{}, fmt.Errorf("%w: %v", ErrUnknownOutcome, outcome)
-	}
-	return amount, nil
+func (p Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
+
+	return p.stakedByOutcome[outcome]
 }

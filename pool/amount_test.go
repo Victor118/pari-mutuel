@@ -7,9 +7,9 @@ import (
 	"github.com/Victor118/pari-mutuel/pool"
 )
 
-func TestNewAmount_ErrorWhenNegative(t *testing.T) {
+func TestNewAmount_Negative_ReturnsError(t *testing.T) {
 	_, err := pool.NewAmount(-50)
 	if !errors.Is(err, pool.ErrInvalidAmount) {
-		t.Errorf("err should be ErrNegativAmount but is : %v", err)
+		t.Errorf("err = %v, want ErrInvalidAmount", err)
 	}
 }

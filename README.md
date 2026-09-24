@@ -88,11 +88,11 @@ Implémenté :
 - [x] `Amount` — construction et addition
 - [x] placer une mise, refus d'une issue inconnue
 - [x] consulter le total misé sur une issue
+- [x] `NewAmount` refuse un montant négatif
 
 Liste de tests en cours :
 
 - [ ] accumulation de deux mises sur la même issue
-- [ ] `NewAmount` refuse un montant négatif
 - [ ] refus d'une mise sur un pool non ouvert, ou après `ClosesAt`
 - [ ] refus d'une mise de zéro (règle du pari, pas de la monnaie)
 - [ ] règlement du pool : `gain = mise × masse totale / masse gagnante`
