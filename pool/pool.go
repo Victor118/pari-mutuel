@@ -25,12 +25,12 @@ var (
 )
 
 type Pool struct {
-	ID              PoolID
-	Creator         AccountID
-	Resolver        ResolverID
-	Question        Question
-	Outcomes        []OutcomeID
-	ClosesAt        time.Time
+	id              PoolID
+	creator         AccountID
+	resolver        ResolverID
+	question        Question
+	outcomes        []OutcomeID
+	closesAt        time.Time
 	stakedByOutcome map[OutcomeID]Amount
 	winner          OutcomeID
 	cancelled       bool
@@ -50,12 +50,12 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 	stakedByOutcome := make(map[OutcomeID]Amount, len(outcomes))
 
 	pool := &Pool{
-		ID:              poolID,
-		Creator:         creator,
-		Resolver:        resolver,
-		Question:        question,
-		Outcomes:        slices.Clone(outcomes),
-		ClosesAt:        closesAt,
+		id:              poolID,
+		creator:         creator,
+		resolver:        resolver,
+		question:        question,
+		outcomes:        slices.Clone(outcomes),
+		closesAt:        closesAt,
 		stakedByOutcome: stakedByOutcome,
 	}
 
@@ -66,15 +66,15 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now
 	if p.IsCancelled() {
 		return ErrPoolCancelled
 	}
-	if now.After(p.ClosesAt) {
-		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.ClosesAt)
+	if now.After(p.closesAt) {
+		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.closesAt)
 	}
 	if _, resolved := p.Winner(); resolved {
-		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.ID, p.winner)
+		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.id, p.winner)
 	}
 
-	if !slices.Contains(p.Outcomes, outcome) {
-		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.ID)
+	if !slices.Contains(p.outcomes, outcome) {
+		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.id)
 	}
 	stakedAmount := p.stakedByOutcome[outcome]
 	total := stakedAmount.Add(amount)
@@ -92,14 +92,14 @@ func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {
 	if p.IsCancelled() {
 		return fmt.Errorf("%w : can't resolve a cancelled pool", ErrPoolCancelled)
 	}
-	if oracle != p.Resolver {
-		return fmt.Errorf("%w : got %v should be %v", ErrNotResolver, oracle, p.Resolver)
+	if oracle != p.resolver {
+		return fmt.Errorf("%w : got %v should be %v", ErrNotResolver, oracle, p.resolver)
 	}
 	if _, resolved := p.Winner(); resolved {
-		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.ID, p.winner)
+		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.id, p.winner)
 	}
-	if !slices.Contains(p.Outcomes, winner) {
-		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, winner, p.ID)
+	if !slices.Contains(p.outcomes, winner) {
+		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, winner, p.id)
 	}
 	p.winner = winner
 	return nil
@@ -113,9 +113,9 @@ func (p *Pool) IsCancelled() bool {
 	return p.cancelled
 }
 
-func (p *Pool) Cancel(resolver ResolverID) error {
-	if resolver != p.Resolver {
-		return fmt.Errorf("%w : want %v got %v", ErrNotResolver, p.Resolver, resolver)
+func (p *Pool) Cancel(oracle ResolverID) error {
+	if oracle != p.resolver {
+		return fmt.Errorf("%w : want %v got %v", ErrNotResolver, p.resolver, oracle)
 	}
 	if _, resolved := p.Winner(); resolved {
 		return fmt.Errorf("%w : can't cancelled a resolved pool", ErrAlreadyResolved)
