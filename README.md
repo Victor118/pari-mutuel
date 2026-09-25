@@ -70,6 +70,43 @@ donc aucune invariante ne tiendrait. Le struct rend le constructeur incontournab
 en restant comparable par `==` et utilisable comme clé de map. Sa valeur zéro vaut
 zéro centime : valide et pleine de sens.
 
+**Les champs de `Pool` ne sont pas exportés.** Un champ public rend l'invariante
+contournable après construction : `p.Resolver = "attaquant"` suffisait à prendre le
+contrôle de la résolution, `p.ClosesAt` à rouvrir un pool fermé, et `p.Outcomes`, étant
+une slice, à ajouter une issue en contournant le contrôle d'unicité. Les tests vivant en
+`package pool_test`, aucun n'y accédait — le passage en minuscule n'a pas coûté une ligne
+de test. Les accesseurs viendront quand un appelant les réclamera, et `Outcomes()` devra
+cloner à la sortie comme `NewPool` clone à l'entrée : une slice s'encapsule aux deux bouts.
+
+## Cycle de vie d'un pool
+
+Quatre états, dont un seul est stocké :
+
+| état | source | terminal |
+|---|---|---|
+| ouvert | `now <= closesAt` | non |
+| clos | `now > closesAt` | non |
+| résolu | `winner != ""` | oui |
+| annulé | champ `cancelled` | oui |
+
+**Ce qui se déduit ne se stocke pas.** Un champ `State` avait d'abord été écrit, puis
+supprimé : il dupliquait une information déjà portée par `closesAt` et par `winner`, sans
+qu'aucune contrainte ne garantisse leur cohérence — un pool résolu pouvait annoncer
+`"open"`. Deux représentations de la même question finissent toujours par diverger. Étant
+de surcroît exporté, il permettait de réautoriser les mises sur un pool résolu.
+
+`cancelled` est le seul état qui ne se déduit de rien, ni du temps ni du gagnant. C'est à
+ce titre qu'il mérite un champ.
+
+**Résolu et annulé s'excluent dans les deux sens.** Sans cette exclusion, un pool pourrait
+autoriser simultanément le paiement des gains et le remboursement des mises sur le même
+pot. La résolution est définitive, y compris pour le resolver légitime : une fois des gains
+réclamés, réécrire le gagnant rendrait ces paiements incohérents. Une éventuelle fenêtre de
+correction se modélisera comme une transition explicite et datée, pas comme un assouplissement.
+
+L'annulation, elle, reste idempotente. Sans charge utile à écraser, une seconde annulation
+réaffirme le même état, là où une seconde résolution aurait pu changer le gagnant.
+
 ## Lancer les tests
 
 Le projet cible Go 1.24 et fournit un devcontainer.
@@ -85,20 +122,35 @@ go test -cover ./...
 Implémenté :
 
 - [x] création d'un pool (≥ 2 issues, issues uniques)
-- [x] `Amount` — construction et addition
+- [x] `Amount` — construction, addition, `Zero`
+- [x] `NewAmount` refuse un montant négatif ; bornes testées de `MinInt64` à `MaxInt64`
 - [x] placer une mise, refus d'une issue inconnue
+- [x] accumulation de deux mises sur la même issue
 - [x] consulter le total misé sur une issue
-- [x] `NewAmount` refuse un montant négatif
+- [x] refus d'une mise après `ClosesAt`
+- [x] résolution par le resolver désigné : définitive, sur une issue existante
+- [x] annulation par le resolver désigné, exclusive de la résolution
+- [x] refus d'une mise sur un pool résolu ou annulé
+- [x] champs de `Pool` non exportés
 
 Liste de tests en cours :
 
-- [ ] accumulation de deux mises sur la même issue
-- [ ] refus d'une mise sur un pool non ouvert, ou après `ClosesAt`
 - [ ] refus d'une mise de zéro (règle du pari, pas de la monnaie)
+- [ ] mises par compte — `PlaceBet` reçoit `account` sans le stocker, donc aucune trace
+      de qui a misé quoi ; ni gain ni remboursement n'est calculable en l'état
 - [ ] règlement du pool : `gain = mise × masse totale / masse gagnante`
 - [ ] politique du reste (breakage) — la somme des gains doit boucler au centime
+- [ ] remboursement des mises après annulation
 
 Dettes connues, assumées :
 
-- Les champs de `Pool` sont exportés, donc ses invariantes sont contournables après
-  construction (`p.State = Settled`).
+- `Amount.Add` panique sur dépassement de capacité au lieu de rendre une erreur. Deux
+  montants valides peuvent sommer au-delà de `MaxInt64`, ce n'est donc pas un état
+  impossible : c'est un arbitrage sur la magnitude du domaine, où un crash vaut mieux
+  qu'un solde négatif silencieux.
+- La multiplication du règlement débordera bien avant l'addition. `mise × masse totale`
+  atteint 10¹⁸ centimes avec un pot de dix millions d'euros, à un facteur 9 de `MaxInt64`.
+  Il faudra un intermédiaire 128 bits ou `math/big`, et là le dépassement sera un cas
+  métier atteignable, pas une assertion.
+- `creator` et `question` sont écrits et jamais lus. Go ne signale pas les champs de
+  struct inutilisés, et aucun accesseur n'existe encore.
