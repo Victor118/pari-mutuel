@@ -21,6 +21,7 @@ var (
 	ErrClosedPool        = errors.New("pool is closed")
 	ErrNotResolver       = errors.New("unauthorized resolver")
 	ErrAlreadyResolved   = errors.New("already resolved")
+	ErrPoolCancelled     = errors.New("pool cancelled")
 )
 
 type Pool struct {
@@ -32,6 +33,7 @@ type Pool struct {
 	ClosesAt        time.Time
 	stakedByOutcome map[OutcomeID]Amount
 	winner          OutcomeID
+	cancelled       bool
 }
 
 func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time) (*Pool, error) {
@@ -61,6 +63,9 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 }
 
 func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now time.Time) error {
+	if p.IsCancelled() {
+		return ErrPoolCancelled
+	}
 	if now.After(p.ClosesAt) {
 		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.ClosesAt)
 	}
@@ -84,6 +89,9 @@ func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
 }
 
 func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {
+	if p.IsCancelled() {
+		return fmt.Errorf("%w : can't resolve a cancelled pool", ErrPoolCancelled)
+	}
 	if oracle != p.Resolver {
 		return fmt.Errorf("%w : got %v should be %v", ErrNotResolver, oracle, p.Resolver)
 	}
@@ -99,4 +107,19 @@ func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {
 
 func (p *Pool) Winner() (OutcomeID, bool) {
 	return p.winner, p.winner != ""
+}
+
+func (p *Pool) IsCancelled() bool {
+	return p.cancelled
+}
+
+func (p *Pool) Cancel(resolver ResolverID) error {
+	if resolver != p.Resolver {
+		return fmt.Errorf("%w : want %v got %v", ErrNotResolver, p.Resolver, resolver)
+	}
+	if _, resolved := p.Winner(); resolved {
+		return fmt.Errorf("%w : can't cancelled a resolved pool", ErrAlreadyResolved)
+	}
+	p.cancelled = true
+	return nil
 }

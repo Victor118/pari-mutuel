@@ -221,3 +221,76 @@ func TestPlaceBet_OnResolvedPool_NotAccepted(t *testing.T) {
 		t.Errorf("bet should be refused, total amount should be zero, got %v", totalStaked)
 	}
 }
+
+func TestCancel_ByDesignatedResolver_MarksCancelled(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	err := p.Cancel(pool.ResolverID("oracle1"))
+	if err != nil {
+		t.Errorf("cancel refused : %v", err)
+	}
+	if !p.IsCancelled() {
+		t.Errorf("should be cancelled")
+	}
+
+}
+
+func TestCancel_ByUnknownResolver_NotAccepted(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	err := p.Cancel(pool.ResolverID("unknown"))
+	if !errors.Is(err, pool.ErrNotResolver) {
+		t.Errorf("err : %v, want ErrNotResolver", err)
+	}
+	if p.IsCancelled() {
+		t.Errorf("should not be cancelled")
+	}
+}
+
+func TestNewPool_NotCancelledAtCreation(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	if p.IsCancelled() {
+		t.Errorf("pool should not be cancelled at creation")
+	}
+
+}
+
+func TestPlaceBet_OnCancelledPool_NotAccepted(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	_ = p.Cancel(pool.ResolverID("oracle1"))
+	outcome := pool.OutcomeID("psg")
+	amount := mustAmount(t, 12000)
+	if err := p.PlaceBet(pool.AccountID("alice"), outcome, amount, time.Now()); !errors.Is(err, pool.ErrPoolCancelled) {
+		t.Errorf("want ErrPoolCancelled, got %v", err)
+	}
+	if p.TotalBetOnOutcome(outcome) != pool.Zero() {
+		t.Errorf("amount should be zero")
+	}
+}
+
+func TestCancel_OnResolvedPool_ReturnsError(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("om")
+	err := p.Resolve(pool.ResolverID("oracle1"), winner)
+	if err != nil {
+		t.Fatalf("setup error %v", err)
+	}
+
+	if err := p.Cancel(pool.ResolverID("oracle1")); !errors.Is(err, pool.ErrAlreadyResolved) {
+		t.Errorf("want ErrAlreadyResolved, got %v", err)
+	}
+	if p.IsCancelled() {
+		t.Error("a resolved pool must not become cancelled")
+	}
+}
+
+func TestResolve_OnCancelledPool_ReturnsError(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	_ = p.Cancel(pool.ResolverID("oracle1"))
+	winner := pool.OutcomeID("om")
+	if err := p.Resolve(pool.ResolverID("oracle1"), winner); !errors.Is(err, pool.ErrPoolCancelled) {
+		t.Errorf("want ErrPoolCancelled, got %v", err)
+	}
+	if _, resolved := p.Winner(); resolved {
+		t.Error("a cancelled pool must not become resolved")
+	}
+
+}
