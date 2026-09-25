@@ -26,7 +26,7 @@ func mustAmount(t *testing.T, cents int64) pool.Amount {
 	return a
 }
 
-func newTestPool(t *testing.T, outcomes ...pool.OutcomeID) *pool.Pool {
+func newTestPool(t *testing.T, closesAt time.Time, outcomes ...pool.OutcomeID) *pool.Pool {
 	t.Helper()
 	p, err := pool.NewPool(
 		pool.PoolID("p1"),
@@ -34,7 +34,7 @@ func newTestPool(t *testing.T, outcomes ...pool.OutcomeID) *pool.Pool {
 		pool.ResolverID("oracle1"),
 		mustQuestion(t, "PSG-OM ?"),
 		outcomes,
-		time.Now().AddDate(0, 1, 0),
+		closesAt,
 	)
 	if err != nil {
 		t.Fatalf("setup: pool refused : %v", err)
@@ -76,12 +76,12 @@ func TestNewPool_DuplicateOutcomes_ReturnsError(t *testing.T) {
 
 func TestPlaceBet_StoresStake(t *testing.T) {
 	//Given
-	p := newTestPool(t, "psg", "om")
+	p := newTestPool(t, time.Now().AddDate(0, 1, 0), "psg", "om")
 	outcome := pool.OutcomeID("psg")
 	stake := mustAmount(t, 12000)
 
 	//When
-	if err := p.PlaceBet(pool.AccountID("bob"), outcome, stake); err != nil {
+	if err := p.PlaceBet(pool.AccountID("bob"), outcome, stake, time.Now()); err != nil {
 		t.Fatalf("bet refused : %v", err)
 	}
 
@@ -94,24 +94,24 @@ func TestPlaceBet_StoresStake(t *testing.T) {
 }
 
 func TestPlaceBet_UnknownOutcome_ReturnsError(t *testing.T) {
-	p := newTestPool(t, "psg", "om")
+	p := newTestPool(t, time.Now().AddDate(0, 1, 0), "psg", "om")
 	outcome := pool.OutcomeID("lyon")
 	stake := mustAmount(t, 12000)
-	if err := p.PlaceBet(pool.AccountID("bob"), outcome, stake); !errors.Is(err, pool.ErrUnknownOutcome) {
+	if err := p.PlaceBet(pool.AccountID("bob"), outcome, stake, time.Now()); !errors.Is(err, pool.ErrUnknownOutcome) {
 		t.Errorf("err = %v, want ErrUnknownOutcome", err)
 	}
 }
 
 func TestPlaceBet_DifferentOutcomes_TrackedSeparately(t *testing.T) {
-	p := newTestPool(t, "psg", "om")
+	p := newTestPool(t, time.Now().AddDate(0, 1, 0), "psg", "om")
 	outcomePsg := pool.OutcomeID("psg")
 	amountPsg := mustAmount(t, 10000)
 	outcomeOm := pool.OutcomeID("om")
 	amountOm := mustAmount(t, 5000)
-	if err := p.PlaceBet(pool.AccountID("alice"), outcomePsg, amountPsg); err != nil {
+	if err := p.PlaceBet(pool.AccountID("alice"), outcomePsg, amountPsg, time.Now()); err != nil {
 		t.Fatalf("bet refused : %v", err)
 	}
-	if err := p.PlaceBet(pool.AccountID("bob"), outcomeOm, amountOm); err != nil {
+	if err := p.PlaceBet(pool.AccountID("bob"), outcomeOm, amountOm, time.Now()); err != nil {
 		t.Fatalf("bet refused : %v", err)
 	}
 
@@ -129,16 +129,16 @@ func TestPlaceBet_DifferentOutcomes_TrackedSeparately(t *testing.T) {
 }
 
 func TestPlaceBet_SameOutcomeTwice_AmountsAccumulate(t *testing.T) {
-	p := newTestPool(t, "psg", "om")
+	p := newTestPool(t, time.Now().AddDate(0, 1, 0), "psg", "om")
 	outcome := pool.OutcomeID("psg")
 	first := mustAmount(t, 12000)
 	second := mustAmount(t, 8000)
 	want := mustAmount(t, 20000)
 
-	if err := p.PlaceBet(pool.AccountID("alice"), outcome, first); err != nil {
+	if err := p.PlaceBet(pool.AccountID("alice"), outcome, first, time.Now()); err != nil {
 		t.Fatalf("bet refused : %v", err)
 	}
-	if err := p.PlaceBet(pool.AccountID("bob"), outcome, second); err != nil {
+	if err := p.PlaceBet(pool.AccountID("bob"), outcome, second, time.Now()); err != nil {
 		t.Fatalf("bet refused : %v", err)
 	}
 
@@ -147,3 +147,13 @@ func TestPlaceBet_SameOutcomeTwice_AmountsAccumulate(t *testing.T) {
 		t.Errorf("TotalBetOnOutcome(%v) = %v, want %v", outcome, totalStaked, want)
 	}
 }
+
+func TestPlaceBet_AfterClosesAt_NotAccepted(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, -1, 0), "psg", "om")
+	outcome := pool.OutcomeID("psg")
+	amount := mustAmount(t, 10000)
+	if err := p.PlaceBet(pool.AccountID("alice"), outcome, amount, time.Now()); !errors.Is(err, pool.ErrClosedPool) {
+		t.Errorf("bet after closesAt should not be accepted")
+	}
+}
+

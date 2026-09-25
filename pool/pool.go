@@ -26,6 +26,7 @@ var (
 	ErrEmptyQuestion     = errors.New("question cannot be empty")
 	ErrUnknownOutcome    = errors.New("unknown outcome")
 	ErrInvalidAmount     = errors.New("amount should be greater or equal to 0")
+	ErrClosedPool        = errors.New("pool is closed")
 )
 
 type Pool struct {
@@ -66,7 +67,10 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 	return pool, nil
 }
 
-func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount) error {
+func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now time.Time) error {
+	if now.After(p.ClosesAt) {
+		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.ClosesAt)
+	}
 	if !slices.Contains(p.Outcomes, outcome) {
 		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.ID)
 	}
