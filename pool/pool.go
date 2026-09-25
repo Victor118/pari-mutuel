@@ -75,10 +75,8 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now
 		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.ID)
 	}
 	stakedAmount := p.stakedByOutcome[outcome]
-	total, err := stakedAmount.Add(amount)
-	if err != nil {
-		return fmt.Errorf("%w : amount incorrect : %v", err, amount)
-	}
+	total := stakedAmount.Add(amount)
+
 	p.stakedByOutcome[outcome] = total
 	return nil
 }

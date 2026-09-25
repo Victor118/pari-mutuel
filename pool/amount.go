@@ -1,9 +1,11 @@
 package pool
 
-import "fmt"
-
 type Amount struct {
 	cents int64
+}
+
+func Zero() Amount {
+	return Amount{}
 }
 
 func NewAmount(cents int64) (Amount, error) {
@@ -15,12 +17,12 @@ func NewAmount(cents int64) (Amount, error) {
 	}, nil
 }
 
-func (a Amount) Add(amount Amount) (Amount, error) {
-	return NewAmount(a.cents + amount.cents)
+func (a Amount) Add(amount Amount) Amount {
+	cents := a.cents + amount.cents
+	if cents < 0 {
 
-}
+		panic("pool: dépassement de capacité sur Amount.Add")
+	}
+	return Amount{cents: cents}
 
-// String rend le montant en unités principales : 12000 -> "120.00".
-func (a Amount) String() string {
-	return fmt.Sprintf("%d.%02d", a.cents/100, a.cents%100)
 }
