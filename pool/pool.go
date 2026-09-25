@@ -12,14 +12,6 @@ type ResolverID string
 type OutcomeID string
 type PoolID string
 
-type PoolState string
-
-const (
-	Open      PoolState = "open"
-	Settled   PoolState = "settled"
-	Cancelled PoolState = "cancelled"
-)
-
 var (
 	ErrNotEnoughOutcomes = errors.New("pool must have at least 2 outcomes")
 	ErrDuplicateOutcome  = errors.New("outcomes must be unique")
@@ -27,6 +19,8 @@ var (
 	ErrUnknownOutcome    = errors.New("unknown outcome")
 	ErrInvalidAmount     = errors.New("amount should be greater or equal to 0")
 	ErrClosedPool        = errors.New("pool is closed")
+	ErrNotResolver       = errors.New("unauthorized resolver")
+	ErrAlreadyResolved   = errors.New("already resolved")
 )
 
 type Pool struct {
@@ -35,9 +29,9 @@ type Pool struct {
 	Resolver        ResolverID
 	Question        Question
 	Outcomes        []OutcomeID
-	State           PoolState
 	ClosesAt        time.Time
 	stakedByOutcome map[OutcomeID]Amount
+	winner          OutcomeID
 }
 
 func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time) (*Pool, error) {
@@ -59,7 +53,6 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		Resolver:        resolver,
 		Question:        question,
 		Outcomes:        slices.Clone(outcomes),
-		State:           Open,
 		ClosesAt:        closesAt,
 		stakedByOutcome: stakedByOutcome,
 	}
@@ -71,6 +64,10 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now
 	if now.After(p.ClosesAt) {
 		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.ClosesAt)
 	}
+	if _, resolved := p.Winner(); resolved {
+		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.ID, p.winner)
+	}
+
 	if !slices.Contains(p.Outcomes, outcome) {
 		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.ID)
 	}
@@ -84,4 +81,22 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now
 func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
 
 	return p.stakedByOutcome[outcome]
+}
+
+func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {
+	if oracle != p.Resolver {
+		return fmt.Errorf("%w : got %v should be %v", ErrNotResolver, oracle, p.Resolver)
+	}
+	if _, resolved := p.Winner(); resolved {
+		return fmt.Errorf("%w : pool %v resolved on %v", ErrAlreadyResolved, p.ID, p.winner)
+	}
+	if !slices.Contains(p.Outcomes, winner) {
+		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, winner, p.ID)
+	}
+	p.winner = winner
+	return nil
+}
+
+func (p *Pool) Winner() (OutcomeID, bool) {
+	return p.winner, p.winner != ""
 }

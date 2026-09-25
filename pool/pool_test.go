@@ -42,21 +42,6 @@ func newTestPool(t *testing.T, closesAt time.Time, outcomes ...pool.OutcomeID) *
 	return p
 }
 
-func TestNewPool_OpenAtCreation(t *testing.T) {
-	//Given
-	//When
-	closesAt := time.Now().AddDate(0, 1, 0)
-	p, err := pool.NewPool(pool.PoolID("p1"), pool.AccountID("alice"), pool.ResolverID("oracle1"), mustQuestion(t, "PSG-OM ?"), []pool.OutcomeID{"psg", "om"}, closesAt)
-
-	//Then
-	if err != nil {
-		t.Fatalf("Creation refused : %v", err)
-	}
-	if p.State != pool.Open {
-		t.Errorf("state = %v, want Open", p.State)
-	}
-}
-
 func TestNewPool_LessThanTwoOutcomes_ReturnsError(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(pool.PoolID("p1"), pool.AccountID("alice"), pool.ResolverID("oracle1"), mustQuestion(t, "PSG-OM ?"), []pool.OutcomeID{}, closesAt)
@@ -157,3 +142,82 @@ func TestPlaceBet_AfterClosesAt_NotAccepted(t *testing.T) {
 	}
 }
 
+func TestResolve_ByDesignatedResolver_RecordsWinner(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("om")
+	err := p.Resolve(pool.ResolverID("oracle1"), pool.OutcomeID("om"))
+	if err != nil {
+		t.Fatalf("resolution refused : %v", err)
+	}
+	got, resolved := p.Winner()
+	if !resolved {
+		t.Fatalf("pool not resolved after Resolve")
+	}
+	if winner != got {
+		t.Errorf("Winner() = %v, want %v", got, winner)
+	}
+}
+
+func TestResolve_ByOtherThanResolver_ReturnsError(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("om")
+	err := p.Resolve(pool.ResolverID("other"), winner)
+	if !errors.Is(err, pool.ErrNotResolver) {
+		t.Errorf("err : %v, want ErrNotResolver", err)
+	}
+	_, resolved := p.Winner()
+	if resolved {
+		t.Errorf("pool resolved by un unauthorized resolver")
+	}
+}
+
+func TestResolve_AlreadyResolvedPool_ReturnsError(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("om")
+	err := p.Resolve(pool.ResolverID("oracle1"), winner)
+	if err != nil {
+		t.Fatalf("resolve should not fail : %v", err)
+	}
+	newWinner := pool.OutcomeID("psg")
+
+	if err := p.Resolve(pool.ResolverID("oracle1"), newWinner); !errors.Is(err, pool.ErrAlreadyResolved) {
+		t.Errorf("err : %v, want ErrAlreadyResolved", err)
+	}
+
+	got, _ := p.Winner()
+	if got != winner {
+		t.Errorf("winner should be : %v, got %v", winner, got)
+	}
+}
+
+func TestResolve_UnknownOutcome_ReturnsError(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("lyon")
+
+	if err := p.Resolve(pool.ResolverID("oracle1"), winner); !errors.Is(err, pool.ErrUnknownOutcome) {
+		t.Errorf("err : %v, want ErrUnknownOutcome", err)
+	}
+
+	if _, resolved := p.Winner(); resolved {
+		t.Errorf("pool resolved on an outcome that does not exist")
+	}
+}
+
+func TestPlaceBet_OnResolvedPool_NotAccepted(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	winner := pool.OutcomeID("om")
+	err := p.Resolve(pool.ResolverID("oracle1"), winner)
+	if err != nil {
+		t.Fatalf("resolve should not fail : %v", err)
+	}
+	amount := mustAmount(t, 10000)
+	if err := p.PlaceBet(pool.AccountID("alice"), winner, amount, time.Now()); !errors.Is(err, pool.ErrAlreadyResolved) {
+		t.Errorf("err : %v, want ErrAlreadyResolved", err)
+	}
+
+	totalStaked := p.TotalBetOnOutcome(winner)
+
+	if totalStaked != pool.Zero() {
+		t.Errorf("bet should be refused, total amount should be zero, got %v", totalStaked)
+	}
+}
