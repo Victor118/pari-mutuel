@@ -58,6 +58,7 @@ comparaisons passent par `==`, vérifié à la compilation — ce qu'une lib à 
 | `Pool` | entité | `*Pool` | par `PoolID` |
 | `Amount` | value object | `Amount` | par valeur |
 | `Question` | value object | `Question` | par valeur |
+| `Money` | value object | `Money` | par valeur |
 
 **`Amount` en `int64` de centimes, jamais en flottant.** `0.1` n'est pas représentable
 en binaire ; les erreurs s'accumulent et l'invariante ci-dessus cesse de tenir. Un
@@ -77,6 +78,31 @@ une slice, à ajouter une issue en contournant le contrôle d'unicité. Les test
 `package pool_test`, aucun n'y accédait — le passage en minuscule n'a pas coûté une ligne
 de test. Les accesseurs viendront quand un appelant les réclamera, et `Outcomes()` devra
 cloner à la sortie comme `NewPool` clone à l'entrée : une slice s'encapsule aux deux bouts.
+
+**`Money` porte la devise, `Amount` non.** `Amount` est une quantité sans unité ;
+`Money` est le couple montant + devise. Un pool n'acceptant qu'une seule devise,
+la faire descendre dans `Amount` la répéterait sur chaque entrée de
+`stakedByOutcome`, dupliquant un fait que le pool porte déjà — la faute de
+`PoolState` sous un autre nom. La séparation préserve trois choses : la valeur zéro
+d'`Amount` reste utile, donc la map peut rester creuse et une issue sans mise rend
+« 0 » dans la devise du pool ; `Add` reste de l'arithmétique pure, sans retour
+d'erreur, puisque sans devise il n'y a pas de mélange possible ; et le type le plus
+testé du domaine n'a pas bougé.
+
+La règle qui en découle : **`Money` à la surface, `Amount` à l'intérieur.** La devise
+n'apparaît que là où des montants hétérogènes pourraient se rencontrer, c'est-à-dire
+aux frontières de l'agrégat — `PlaceBet` en entrée, `TotalBetOnOutcome` en sortie.
+
+**La garde vit dans l'agrégat**, pas à la frontière. `PlaceBet` compare la devise de
+la mise à celle du pool et refuse. Déléguer cette vérification à la couche appelante
+aurait laissé l'invariante contournable depuis l'extérieur, exactement le trou fermé
+en passant les champs de `Pool` en privé.
+
+`Currency` reste un `type Currency string` nu, contrairement à `Amount`. Ce n'est pas
+un objet valeur porteur d'arithmétique mais un identifiant opaque : sur une chaîne,
+une dénomination est exacte et sensible à la casse (`uatom`, `ibc/27394F…`).
+Normaliser la casse la casserait. `NewPool` refuse donc une devise vide ou blanche
+sans jamais la réécrire.
 
 ## Cycle de vie d'un pool
 
@@ -132,6 +158,8 @@ Implémenté :
 - [x] annulation par le resolver désigné, exclusive de la résolution
 - [x] refus d'une mise sur un pool résolu ou annulé
 - [x] champs de `Pool` non exportés
+- [x] `Money` et `Currency` : un pari n'est accepté que dans la devise du pool
+- [x] `NewPool` exige une devise non vide
 
 Liste de tests en cours :
 
@@ -152,5 +180,7 @@ Dettes connues, assumées :
   atteint 10¹⁸ centimes avec un pot de dix millions d'euros, à un facteur 9 de `MaxInt64`.
   Il faudra un intermédiaire 128 bits ou `math/big`, et là le dépassement sera un cas
   métier atteignable, pas une assertion.
+- Le message de `panic` d'`Amount.Add` est le seul texte français du code, tous les
+  autres messages étant en anglais.
 - `creator` et `question` sont écrits et jamais lus. Go ne signale pas les champs de
   struct inutilisés, et aucun accesseur n'existe encore.
