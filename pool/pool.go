@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,8 @@ var (
 	ErrNotResolver       = errors.New("unauthorized resolver")
 	ErrAlreadyResolved   = errors.New("already resolved")
 	ErrPoolCancelled     = errors.New("pool cancelled")
+	ErrCurrencyMismatch  = errors.New("currency mismatch")
+	ErrEmptyCurrency     = errors.New("currency cannot be empty")
 )
 
 type Pool struct {
@@ -34,9 +37,13 @@ type Pool struct {
 	stakedByOutcome map[OutcomeID]Amount
 	winner          OutcomeID
 	cancelled       bool
+	currency        Currency
 }
 
-func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time) (*Pool, error) {
+func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time, currency Currency) (*Pool, error) {
+	if strings.TrimSpace(string(currency)) == "" {
+		return nil, ErrEmptyCurrency
+	}
 	if len(outcomes) <= 1 {
 		return nil, ErrNotEnoughOutcomes
 	}
@@ -57,14 +64,18 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		outcomes:        slices.Clone(outcomes),
 		closesAt:        closesAt,
 		stakedByOutcome: stakedByOutcome,
+		currency:        currency,
 	}
 
 	return pool, nil
 }
 
-func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now time.Time) error {
+func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, m Money, now time.Time) error {
 	if p.IsCancelled() {
 		return ErrPoolCancelled
+	}
+	if p.currency != m.currency {
+		return fmt.Errorf("%w : got %v, want %v", ErrCurrencyMismatch, m.currency, p.currency)
 	}
 	if now.After(p.closesAt) {
 		return fmt.Errorf("%w : pool is closed since %v", ErrClosedPool, p.closesAt)
@@ -77,15 +88,15 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, amount Amount, now
 		return fmt.Errorf("%w : outcome %v not exist for the pool %v", ErrUnknownOutcome, outcome, p.id)
 	}
 	stakedAmount := p.stakedByOutcome[outcome]
-	total := stakedAmount.Add(amount)
+	total := stakedAmount.Add(m.amount)
 
 	p.stakedByOutcome[outcome] = total
 	return nil
 }
 
-func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Amount {
+func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Money {
 
-	return p.stakedByOutcome[outcome]
+	return NewMoney(p.stakedByOutcome[outcome], p.currency)
 }
 
 func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {

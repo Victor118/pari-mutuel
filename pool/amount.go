@@ -1,11 +1,21 @@
 package pool
 
+type Currency string
+
 type Amount struct {
 	cents int64
 }
 
-func Zero() Amount {
-	return Amount{}
+type Money struct {
+	amount   Amount
+	currency Currency
+}
+
+func Zero(currency Currency) Money {
+	return Money{
+		amount:   Amount{},
+		currency: currency,
+	}
 }
 
 func NewAmount(cents int64) (Amount, error) {
@@ -25,4 +35,11 @@ func (a Amount) Add(amount Amount) Amount {
 	}
 	return Amount{cents: cents}
 
+}
+
+func NewMoney(amount Amount, currency Currency) Money {
+	return Money{
+		amount:   amount,
+		currency: currency,
+	}
 }
