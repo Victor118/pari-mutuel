@@ -14,17 +14,18 @@ type OutcomeID string
 type PoolID string
 
 var (
-	ErrNotEnoughOutcomes = errors.New("pool must have at least 2 outcomes")
-	ErrDuplicateOutcome  = errors.New("outcomes must be unique")
-	ErrEmptyQuestion     = errors.New("question cannot be empty")
-	ErrUnknownOutcome    = errors.New("unknown outcome")
-	ErrInvalidAmount     = errors.New("amount should be greater or equal to 0")
-	ErrClosedPool        = errors.New("pool is closed")
-	ErrNotResolver       = errors.New("unauthorized resolver")
-	ErrAlreadyResolved   = errors.New("already resolved")
-	ErrPoolCancelled     = errors.New("pool cancelled")
-	ErrCurrencyMismatch  = errors.New("currency mismatch")
-	ErrEmptyCurrency     = errors.New("currency cannot be empty")
+	ErrNotEnoughOutcomes       = errors.New("pool must have at least 2 outcomes")
+	ErrDuplicateOutcome        = errors.New("outcomes must be unique")
+	ErrEmptyQuestion           = errors.New("question cannot be empty")
+	ErrUnknownOutcome          = errors.New("unknown outcome")
+	ErrInvalidAmount           = errors.New("amount should be greater or equal to 0")
+	ErrClosedPool              = errors.New("pool is closed")
+	ErrNotResolver             = errors.New("unauthorized resolver")
+	ErrAlreadyResolved         = errors.New("already resolved")
+	ErrPoolCancelled           = errors.New("pool cancelled")
+	ErrCurrencyMismatch        = errors.New("currency mismatch")
+	ErrEmptyCurrency           = errors.New("currency cannot be empty")
+	ErrStakeExceedsWinningMass = errors.New("stake exceeds winning mass")
 )
 
 type Pool struct {
@@ -133,4 +134,20 @@ func (p *Pool) Cancel(oracle ResolverID) error {
 	}
 	p.cancelled = true
 	return nil
+}
+
+func (p *Pool) PayoutFor(stake Money) (Money, error) {
+	if stake.amount.cents == 0 {
+		return Zero(p.currency), nil
+	}
+	total := Amount{}
+	for _, outcome := range p.outcomes {
+		total = total.Add(p.stakedByOutcome[outcome])
+	}
+	stakedWinnerOutcome := p.TotalBetOnOutcome(p.winner)
+	if stake.amount.cents > stakedWinnerOutcome.amount.cents {
+		return Zero(p.currency), fmt.Errorf("%w : stake %v, winning mass %v", ErrStakeExceedsWinningMass, stake, stakedWinnerOutcome)
+	}
+	result := (stake.amount.cents * total.cents) / stakedWinnerOutcome.amount.cents
+	return NewMoney(Amount{cents: result}, p.currency), nil
 }
