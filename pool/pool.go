@@ -20,6 +20,7 @@ var (
 	ErrUnknownOutcome          = errors.New("unknown outcome")
 	ErrInvalidAmount           = errors.New("amount should be greater or equal to 0")
 	ErrClosedPool              = errors.New("pool is closed")
+	ErrResolverRequired        = errors.New("resolver is mandatory")
 	ErrNotResolver             = errors.New("unauthorized resolver")
 	ErrAlreadyResolved         = errors.New("already resolved")
 	ErrPoolCancelled           = errors.New("pool cancelled")
@@ -44,6 +45,9 @@ type Pool struct {
 func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Question, outcomes []OutcomeID, closesAt time.Time, currency Currency) (*Pool, error) {
 	if strings.TrimSpace(string(currency)) == "" {
 		return nil, ErrEmptyCurrency
+	}
+	if strings.TrimSpace(string(resolver)) == "" {
+		return nil, ErrResolverRequired
 	}
 	if len(outcomes) <= 1 {
 		return nil, ErrNotEnoughOutcomes

@@ -471,3 +471,39 @@ func TestPayoutFor_ZeroStakeWithNobodyOnWinner_ReturnsZero(t *testing.T) {
 		t.Errorf("got :%v , want zero", got)
 	}
 }
+
+func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
+	closesAt := time.Now().AddDate(0, 1, 0)
+	_, err := pool.NewPool(
+		pool.PoolID("p1"),
+		pool.AccountID("alice"),
+		pool.ResolverID(""),
+		mustQuestion(t, "PSG-OM ?"),
+		[]pool.OutcomeID{"om", "psg", "nul"},
+		closesAt,
+		testCurrency,
+	)
+
+	if !errors.Is(err, pool.ErrResolverRequired) {
+		t.Errorf("got %v, want ErrResolverRequired", err)
+	}
+
+}
+
+func TestNewPool_SpaceResolver_ShouldFail(t *testing.T) {
+	closesAt := time.Now().AddDate(0, 1, 0)
+	_, err := pool.NewPool(
+		pool.PoolID("p1"),
+		pool.AccountID("alice"),
+		pool.ResolverID("  "),
+		mustQuestion(t, "PSG-OM ?"),
+		[]pool.OutcomeID{"om", "psg", "nul"},
+		closesAt,
+		testCurrency,
+	)
+
+	if !errors.Is(err, pool.ErrResolverRequired) {
+		t.Errorf("got %v, want ErrResolverRequired", err)
+	}
+
+}
