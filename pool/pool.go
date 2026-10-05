@@ -27,6 +27,7 @@ var (
 	ErrCurrencyMismatch        = errors.New("currency mismatch")
 	ErrEmptyCurrency           = errors.New("currency cannot be empty")
 	ErrStakeExceedsWinningMass = errors.New("stake exceeds winning mass")
+	ErrBetAmount               = errors.New("amount should be greater than zero")
 )
 
 type Pool struct {
@@ -78,6 +79,9 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, m Money, now time.Time) error {
 	if p.IsCancelled() {
 		return ErrPoolCancelled
+	}
+	if m.amount == Zero(p.currency).amount {
+		return fmt.Errorf("%w : amount %v", ErrBetAmount, m)
 	}
 	if p.currency != m.currency {
 		return fmt.Errorf("%w : got %v, want %v", ErrCurrencyMismatch, m.currency, p.currency)

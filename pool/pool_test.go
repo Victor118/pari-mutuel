@@ -507,3 +507,15 @@ func TestNewPool_SpaceResolver_ShouldFail(t *testing.T) {
 	}
 
 }
+
+func TestPlaceBet_AmountZero_ShouldFail(t *testing.T) {
+
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	if err := p.PlaceBet(pool.AccountID("alice"), pool.OutcomeID("om"), testMoney(t, 0), time.Now()); !errors.Is(err, pool.ErrBetAmount) {
+		t.Errorf("got %v,want ErrBetAmount", err)
+	}
+	staked := p.TotalBetOnOutcome(pool.OutcomeID("om"))
+	if staked != pool.Zero(testCurrency) {
+		t.Errorf("staked amount should be zero, got : %v", staked)
+	}
+}
