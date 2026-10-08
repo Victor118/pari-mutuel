@@ -15,23 +15,22 @@ type OutcomeID string
 type PoolID string
 
 var (
-	ErrNotEnoughOutcomes       = errors.New("pool must have at least 2 outcomes")
-	ErrDuplicateOutcome        = errors.New("outcomes must be unique")
-	ErrEmptyQuestion           = errors.New("question cannot be empty")
-	ErrUnknownOutcome          = errors.New("unknown outcome")
-	ErrInvalidAmount           = errors.New("amount should be greater or equal to 0")
-	ErrClosedPool              = errors.New("pool is closed")
-	ErrResolverRequired        = errors.New("resolver is mandatory")
-	ErrNotResolver             = errors.New("unauthorized resolver")
-	ErrAlreadyResolved         = errors.New("already resolved")
-	ErrPoolCancelled           = errors.New("pool cancelled")
-	ErrCurrencyMismatch        = errors.New("currency mismatch")
-	ErrEmptyCurrency           = errors.New("currency cannot be empty")
-	ErrStakeExceedsWinningMass = errors.New("stake exceeds winning mass")
-	ErrBetAmount               = errors.New("amount should be greater than zero")
-	ErrAccountRequired         = errors.New("account is mandatory")
-	ErrNotResolved             = errors.New("pool not resolved")
-	ErrAlreadyClaimed          = errors.New("payout already claimed")
+	ErrNotEnoughOutcomes = errors.New("pool must have at least 2 outcomes")
+	ErrDuplicateOutcome  = errors.New("outcomes must be unique")
+	ErrEmptyQuestion     = errors.New("question cannot be empty")
+	ErrUnknownOutcome    = errors.New("unknown outcome")
+	ErrInvalidAmount     = errors.New("amount should be greater or equal to 0")
+	ErrClosedPool        = errors.New("pool is closed")
+	ErrResolverRequired  = errors.New("resolver is mandatory")
+	ErrNotResolver       = errors.New("unauthorized resolver")
+	ErrAlreadyResolved   = errors.New("already resolved")
+	ErrPoolCancelled     = errors.New("pool cancelled")
+	ErrCurrencyMismatch  = errors.New("currency mismatch")
+	ErrEmptyCurrency     = errors.New("currency cannot be empty")
+	ErrBetAmount         = errors.New("amount should be greater than zero")
+	ErrAccountRequired   = errors.New("account is mandatory")
+	ErrNotResolved       = errors.New("pool not resolved")
+	ErrAlreadyClaimed    = errors.New("payout already claimed")
 )
 
 type Pool struct {
@@ -170,24 +169,21 @@ func (p *Pool) PayoutFor(account AccountID) (Money, error) {
 	if p.IsCancelled() {
 		return Zero(p.currency), fmt.Errorf("%w : no payout on a cancelled pool", ErrPoolCancelled)
 	}
-	if _, resolved := p.Winner(); !resolved {
+	winner, resolved := p.Winner()
+	if !resolved {
 		return Zero(p.currency), fmt.Errorf("%w : pool %v", ErrNotResolved, p.id)
 	}
-	stake := p.stakes[account][p.winner]
-	if stake.cents == 0 {
+	winningMass := p.stakedByOutcome[winner]
+	if winningMass.cents == 0 {
+		// TODO: refund (PR suivante)
 		return Zero(p.currency), nil
 	}
 	var total Amount
 	for _, outcome := range p.outcomes {
 		total = total.Add(p.stakedByOutcome[outcome])
 	}
-	winningMass := p.stakedByOutcome[p.winner]
-	if winningMass.cents == 0 {
-		return Zero(p.currency), nil
-	}
-	if stake.cents > winningMass.cents {
-		return Zero(p.currency), fmt.Errorf("%w : stake %v, winning mass %v", ErrStakeExceedsWinningMass, stake, winningMass)
-	}
+	// La mise du compte fait partie de la masse gagnante : stake <= winningMass, précondition de mulDiv.
+	stake := p.StakeOf(account, winner).amount
 	gain, err := NewAmount(mulDiv(stake.cents, total.cents, winningMass.cents))
 	if err != nil {
 		return Zero(p.currency), err
