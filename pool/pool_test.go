@@ -588,6 +588,25 @@ func TestPayoutFor_CancelledPool_ReturnsErrPoolCancelled(t *testing.T) {
 	}
 }
 
+func TestPayoutFor_LargePot_NoOverflow(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 1_000_000_000))
+	mustPlaceBet(t, p, "bob", "om", testMoney(t, 9_000_000_000))
+	if err := p.Resolve(pool.ResolverID("oracle1"), "psg"); err != nil {
+		t.Fatalf("setup: resolution refused : %v", err)
+	}
+
+	got, err := p.PayoutFor("alice")
+
+	if err != nil {
+		t.Fatalf("payout refused : %v", err)
+	}
+	// mise × masse totale = 10¹⁹, au-delà de MaxInt64
+	if want := testMoney(t, 10_000_000_000); got != want {
+		t.Errorf("PayoutFor(alice) = %v, want %v", got, want)
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(

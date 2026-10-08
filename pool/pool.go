@@ -3,6 +3,7 @@ package pool
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 	"slices"
 	"strings"
 	"time"
@@ -169,14 +170,27 @@ func (p *Pool) PayoutFor(account AccountID) (Money, error) {
 	if stake.cents == 0 {
 		return Zero(p.currency), nil
 	}
-	total := Amount{}
+	var total Amount
 	for _, outcome := range p.outcomes {
 		total = total.Add(p.stakedByOutcome[outcome])
 	}
-	stakedWinnerOutcome := p.stakedByOutcome[p.winner]
-	if stake.cents > stakedWinnerOutcome.cents {
-		return Zero(p.currency), fmt.Errorf("%w : stake %v, winning mass %v", ErrStakeExceedsWinningMass, stake, stakedWinnerOutcome)
+	winningMass := p.stakedByOutcome[p.winner]
+	if winningMass.cents == 0 {
+		return Zero(p.currency), nil
 	}
-	result := (stake.cents * total.cents) / stakedWinnerOutcome.cents
-	return NewMoney(Amount{cents: result}, p.currency), nil
+	if stake.cents > winningMass.cents {
+		return Zero(p.currency), fmt.Errorf("%w : stake %v, winning mass %v", ErrStakeExceedsWinningMass, stake, winningMass)
+	}
+	gain, err := NewAmount(mulDiv(stake.cents, total.cents, winningMass.cents))
+	if err != nil {
+		return Zero(p.currency), err
+	}
+	return NewMoney(gain, p.currency), nil
+}
+
+// mulDiv calcule a*b/c sans débordement. Préconditions : a,b >= 0, c > 0, a <= c.
+func mulDiv(a, b, c int64) int64 {
+	hi, lo := bits.Mul64(uint64(a), uint64(b))
+	q, _ := bits.Div64(hi, lo, uint64(c))
+	return int64(q)
 }
