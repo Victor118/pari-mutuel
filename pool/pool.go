@@ -31,6 +31,7 @@ var (
 	ErrBetAmount               = errors.New("amount should be greater than zero")
 	ErrAccountRequired         = errors.New("account is mandatory")
 	ErrNotResolved             = errors.New("pool not resolved")
+	ErrAlreadyClaimed          = errors.New("payout already claimed")
 )
 
 type Pool struct {
@@ -42,6 +43,7 @@ type Pool struct {
 	closesAt        time.Time
 	stakedByOutcome map[OutcomeID]Amount
 	stakes          map[AccountID]map[OutcomeID]Amount
+	claimed         map[AccountID]bool
 	winner          OutcomeID
 	cancelled       bool
 	currency        Currency
@@ -75,6 +77,7 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		closesAt:        closesAt,
 		stakedByOutcome: stakedByOutcome,
 		stakes:          make(map[AccountID]map[OutcomeID]Amount),
+		claimed:         make(map[AccountID]bool),
 		currency:        currency,
 	}
 
@@ -186,6 +189,18 @@ func (p *Pool) PayoutFor(account AccountID) (Money, error) {
 		return Zero(p.currency), err
 	}
 	return NewMoney(gain, p.currency), nil
+}
+
+func (p *Pool) Claim(account AccountID) (Money, error) {
+	if p.claimed[account] {
+		return Zero(p.currency), fmt.Errorf("%w : account %v", ErrAlreadyClaimed, account)
+	}
+	payout, err := p.PayoutFor(account)
+	if err != nil {
+		return Zero(p.currency), err
+	}
+	p.claimed[account] = true
+	return payout, nil
 }
 
 // mulDiv calcule a*b/c sans débordement. Préconditions : a,b >= 0, c > 0, a <= c.

@@ -607,6 +607,31 @@ func TestPayoutFor_LargePot_NoOverflow(t *testing.T) {
 	}
 }
 
+func TestClaim_Twice_ReturnsErrAlreadyClaimed(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "bob", "om", testMoney(t, 10000))
+	if err := p.Resolve(pool.ResolverID("oracle1"), "psg"); err != nil {
+		t.Fatalf("setup: resolution refused : %v", err)
+	}
+	first, err := p.Claim("alice")
+	if err != nil {
+		t.Fatalf("first claim refused : %v", err)
+	}
+	if want := testMoney(t, 20000); first != want {
+		t.Errorf("first Claim(alice) = %v, want %v", first, want)
+	}
+
+	second, err := p.Claim("alice")
+
+	if !errors.Is(err, pool.ErrAlreadyClaimed) {
+		t.Errorf("err = %v, want ErrAlreadyClaimed", err)
+	}
+	if second != pool.Zero(testCurrency) {
+		t.Errorf("second Claim(alice) = %v, want zero", second)
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
