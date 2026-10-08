@@ -43,3 +43,7 @@ func NewMoney(amount Amount, currency Currency) Money {
 		currency: currency,
 	}
 }
+
+func (m Money) Cents() int64 {
+	return m.amount.cents
+}

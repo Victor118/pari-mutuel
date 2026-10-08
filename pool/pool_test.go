@@ -632,6 +632,52 @@ func TestClaim_Twice_ReturnsErrAlreadyClaimed(t *testing.T) {
 	}
 }
 
+func TestClaim_AllAccounts_SumNeverExceedsTotalMass(t *testing.T) {
+	bets := []testBet{
+		{"alice", "psg", 3333},
+		{"alice", "om", 1001},
+		{"bob", "psg", 7},
+		{"bob", "psg", 2500},
+		{"carol", "om", 9999},
+		{"dave", "nul", 4444},
+		{"erin", "psg", 1},
+		{"erin", "nul", 777},
+	}
+	accounts := []pool.AccountID{"alice", "bob", "carol", "dave", "erin", "frank"}
+	var totalMass int64
+	for _, b := range bets {
+		totalMass += b.cents
+	}
+
+	for _, winner := range []pool.OutcomeID{"psg", "om", "nul"} {
+		t.Run(string(winner), func(t *testing.T) {
+			p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+			for _, b := range bets {
+				mustPlaceBet(t, p, b.account, b.outcome, testMoney(t, b.cents))
+			}
+			if err := p.Resolve(pool.ResolverID("oracle1"), winner); err != nil {
+				t.Fatalf("setup: resolution refused : %v", err)
+			}
+
+			var distributed int64
+			for _, account := range accounts {
+				gain, err := p.Claim(account)
+				if err != nil {
+					t.Fatalf("Claim(%v) refused : %v", account, err)
+				}
+				if gain.Cents() < 0 {
+					t.Errorf("Claim(%v) = %v, want a non-negative gain", account, gain)
+				}
+				distributed += gain.Cents()
+			}
+
+			if distributed > totalMass {
+				t.Errorf("sum of claims = %d, exceeds total mass %d", distributed, totalMass)
+			}
+		})
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
