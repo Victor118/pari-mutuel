@@ -91,7 +91,8 @@ testé du domaine n'a pas bougé.
 
 La règle qui en découle : **`Money` à la surface, `Amount` à l'intérieur.** La devise
 n'apparaît que là où des montants hétérogènes pourraient se rencontrer, c'est-à-dire
-aux frontières de l'agrégat — `PlaceBet` en entrée, `TotalBetOnOutcome` en sortie.
+aux frontières de l'agrégat — `PlaceBet` en entrée, `TotalBetOnOutcome`, `StakeOf`,
+`PayoutFor` et `Claim` en sortie.
 
 **La garde vit dans l'agrégat**, pas à la frontière. `PlaceBet` compare la devise de
 la mise à celle du pool et refuse. Déléguer cette vérification à la couche appelante
@@ -133,6 +134,40 @@ correction se modélisera comme une transition explicite et datée, pas comme un
 L'annulation, elle, reste idempotente. Sans charge utile à écraser, une seconde annulation
 réaffirme le même état, là où une seconde résolution aurait pu changer le gagnant.
 
+## Règlement
+
+Chaque mise est rattachée à son compte : `PlaceBet` refuse un compte vide ou blanc
+(`ErrAccountRequired`) et cumule la mise dans l'agrégat, par compte et par issue, en
+plus du total par issue.
+
+```go
+func (p *Pool) StakeOf(account AccountID, outcome OutcomeID) Money
+func (p *Pool) PayoutFor(account AccountID) (Money, error)
+func (p *Pool) Claim(account AccountID) (Money, error)
+```
+
+- `StakeOf` rend la mise cumulée d'un compte sur une issue, zéro s'il n'a rien misé.
+- `PayoutFor` calcule, sans rien modifier,
+  `gain = mise du compte sur l'issue gagnante × masse totale / masse gagnante`
+  (division entière, arrondi vers le bas). Un perdant ou un compte qui n'a jamais
+  misé reçoit zéro ; seule la mise sur l'issue gagnante compte. Erreurs :
+  `ErrPoolCancelled` sur un pool annulé, `ErrNotResolved` avant la résolution.
+- `Claim` fait le même calcul, puis marque le compte comme payé. Un second appel
+  rend `ErrAlreadyClaimed`.
+
+**Le gain dépend du compte, pas d'un montant fourni par l'appelant.** L'ancienne
+signature `PayoutFor(stake Money)` calculait un gain pour n'importe quel montant,
+y compris pour un perdant, autant de fois qu'on le voulait. Le cas « mise supérieure
+à la masse gagnante » devient impossible par construction, puisque la mise du compte
+fait partie de cette masse : `ErrStakeExceedsWinningMass` a disparu.
+
+**Le produit `mise × masse totale` passe par un intermédiaire 128 bits**
+(`bits.Mul64` / `bits.Div64`). Comme la mise est au plus égale à la masse gagnante, le
+quotient tient dans un `int64`.
+
+Si personne n'a misé sur l'issue gagnante, `PayoutFor` rend zéro pour l'instant. Le
+remboursement viendra dans une PR suivante.
+
 ## Lancer les tests
 
 Le projet cible Go 1.24 et fournit un devcontainer.
@@ -163,12 +198,19 @@ Implémenté :
 
 Liste de tests en cours :
 
-- [ ] refus d'une mise de zéro (règle du pari, pas de la monnaie)
-- [ ] mises par compte — `PlaceBet` reçoit `account` sans le stocker, donc aucune trace
-      de qui a misé quoi ; ni gain ni remboursement n'est calculable en l'état
-- [ ] règlement du pool : `gain = mise × masse totale / masse gagnante`
+- [x] refus d'une mise de zéro (règle du pari, pas de la monnaie)
+- [x] mises par compte : `PlaceBet` enregistre qui a misé quoi, `StakeOf` le restitue
+- [x] refus d'une mise sans compte (vide ou blanc)
+- [x] règlement du pool : `gain = mise × masse totale / masse gagnante`, par compte
+- [x] un perdant, ou un compte qui n'a jamais misé, reçoit zéro
+- [x] seule la mise sur l'issue gagnante est payée
+- [x] pas de gain avant la résolution ni sur un pool annulé
+- [x] pas de débordement sur un gros pot (intermédiaire 128 bits)
+- [x] `Claim` ne paie qu'une fois
+- [x] invariant : somme des gains réclamés ≤ masse totale, chaque gain ≥ 0
 - [ ] politique du reste (breakage) — la somme des gains doit boucler au centime
 - [ ] remboursement des mises après annulation
+- [ ] remboursement quand personne n'a misé sur l'issue gagnante (`TODO` dans `PayoutFor`)
 
 Dettes connues, assumées :
 
@@ -176,10 +218,11 @@ Dettes connues, assumées :
   montants valides peuvent sommer au-delà de `MaxInt64`, ce n'est donc pas un état
   impossible : c'est un arbitrage sur la magnitude du domaine, où un crash vaut mieux
   qu'un solde négatif silencieux.
-- La multiplication du règlement débordera bien avant l'addition. `mise × masse totale`
-  atteint 10¹⁸ centimes avec un pot de dix millions d'euros, à un facteur 9 de `MaxInt64`.
-  Il faudra un intermédiaire 128 bits ou `math/big`, et là le dépassement sera un cas
-  métier atteignable, pas une assertion.
+- `stakedByOutcome` se déduit de `stakes` (somme des mises de chaque compte par issue),
+  mais les deux sont stockés. `PlaceBet` les met à jour ensemble, et c'est la seule
+  écriture. C'est une entorse assumée à « ce qui se déduit ne se stocke pas ».
+- `Money.Cents()` n'existe que pour le test d'invariant : depuis l'API publique, sans
+  lui, on ne peut pas ordonner deux `Money` (`==` seulement).
 - Le message de `panic` d'`Amount.Add` est le seul texte français du code, tous les
   autres messages étant en anglais.
 - `creator` et `question` sont écrits et jamais lus. Go ne signale pas les champs de
