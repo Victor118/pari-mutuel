@@ -495,6 +495,24 @@ func TestPayoutFor_LoserWithNonZeroStake_ReturnsZero(t *testing.T) {
 	}
 }
 
+func TestPayoutFor_AccountWhoNeverBet_ReturnsZero(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "bob", "om", testMoney(t, 10000))
+	if err := p.Resolve(pool.ResolverID("oracle1"), "psg"); err != nil {
+		t.Fatalf("setup: resolution refused : %v", err)
+	}
+
+	got, err := p.PayoutFor("carol")
+
+	if err != nil {
+		t.Fatalf("payout refused : %v", err)
+	}
+	if got != pool.Zero(testCurrency) {
+		t.Errorf("PayoutFor(carol) = %v, want zero", got)
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
