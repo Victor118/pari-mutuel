@@ -28,6 +28,7 @@ var (
 	ErrEmptyCurrency           = errors.New("currency cannot be empty")
 	ErrStakeExceedsWinningMass = errors.New("stake exceeds winning mass")
 	ErrBetAmount               = errors.New("amount should be greater than zero")
+	ErrAccountRequired         = errors.New("account is mandatory")
 )
 
 type Pool struct {
@@ -79,6 +80,9 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 }
 
 func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, m Money, now time.Time) error {
+	if strings.TrimSpace(string(account)) == "" {
+		return ErrAccountRequired
+	}
 	if p.IsCancelled() {
 		return ErrPoolCancelled
 	}

@@ -533,6 +533,30 @@ func TestPayoutFor_AccountWithStakesOnSeveralOutcomes_PaidOnWinningOnly(t *testi
 	}
 }
 
+func TestPlaceBet_EmptyAccount_ReturnsErrAccountRequired(t *testing.T) {
+	cases := []struct {
+		name    string
+		account pool.AccountID
+	}{
+		{"vide", ""},
+		{"blanc", "   "},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+
+			err := p.PlaceBet(c.account, "psg", testMoney(t, 10000), time.Now())
+
+			if !errors.Is(err, pool.ErrAccountRequired) {
+				t.Errorf("err = %v, want ErrAccountRequired", err)
+			}
+			if staked := p.TotalBetOnOutcome("psg"); staked != pool.Zero(testCurrency) {
+				t.Errorf("bet without account must not be recorded, got %v", staked)
+			}
+		})
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
