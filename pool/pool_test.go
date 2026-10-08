@@ -678,6 +678,31 @@ func TestClaim_AllAccounts_SumNeverExceedsTotalMass(t *testing.T) {
 	}
 }
 
+func TestStakeOf_ReturnsAccountStakeOnOutcome(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om", "nul")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 5000))
+	mustPlaceBet(t, p, "alice", "om", testMoney(t, 3000))
+	mustPlaceBet(t, p, "bob", "psg", testMoney(t, 7000))
+
+	cases := []struct {
+		account pool.AccountID
+		outcome pool.OutcomeID
+		want    int64
+	}{
+		{"alice", "psg", 15000},
+		{"alice", "om", 3000},
+		{"alice", "nul", 0},
+		{"bob", "psg", 7000},
+		{"carol", "psg", 0},
+	}
+	for _, c := range cases {
+		if got, want := p.StakeOf(c.account, c.outcome), testMoney(t, c.want); got != want {
+			t.Errorf("StakeOf(%v, %v) = %v, want %v", c.account, c.outcome, got, want)
+		}
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(

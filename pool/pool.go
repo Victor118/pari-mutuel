@@ -126,6 +126,10 @@ func (p *Pool) TotalBetOnOutcome(outcome OutcomeID) Money {
 	return NewMoney(p.stakedByOutcome[outcome], p.currency)
 }
 
+func (p *Pool) StakeOf(account AccountID, outcome OutcomeID) Money {
+	return NewMoney(p.stakes[account][outcome], p.currency)
+}
+
 func (p *Pool) Resolve(oracle ResolverID, winner OutcomeID) error {
 	if p.IsCancelled() {
 		return fmt.Errorf("%w : can't resolve a cancelled pool", ErrPoolCancelled)
