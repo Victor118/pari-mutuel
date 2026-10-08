@@ -38,6 +38,7 @@ type Pool struct {
 	outcomes        []OutcomeID
 	closesAt        time.Time
 	stakedByOutcome map[OutcomeID]Amount
+	stakes          map[AccountID]map[OutcomeID]Amount
 	winner          OutcomeID
 	cancelled       bool
 	currency        Currency
@@ -70,6 +71,7 @@ func NewPool(poolID PoolID, creator AccountID, resolver ResolverID, question Que
 		outcomes:        slices.Clone(outcomes),
 		closesAt:        closesAt,
 		stakedByOutcome: stakedByOutcome,
+		stakes:          make(map[AccountID]map[OutcomeID]Amount),
 		currency:        currency,
 	}
 
@@ -100,6 +102,13 @@ func (p *Pool) PlaceBet(account AccountID, outcome OutcomeID, m Money, now time.
 	total := stakedAmount.Add(m.amount)
 
 	p.stakedByOutcome[outcome] = total
+
+	accountStakes, ok := p.stakes[account]
+	if !ok {
+		accountStakes = make(map[OutcomeID]Amount)
+		p.stakes[account] = accountStakes
+	}
+	accountStakes[outcome] = accountStakes[outcome].Add(m.amount)
 	return nil
 }
 
@@ -144,18 +153,19 @@ func (p *Pool) Cancel(oracle ResolverID) error {
 	return nil
 }
 
-func (p *Pool) PayoutFor(stake Money) (Money, error) {
-	if stake.amount.cents == 0 {
+func (p *Pool) PayoutFor(account AccountID) (Money, error) {
+	stake := p.stakes[account][p.winner]
+	if stake.cents == 0 {
 		return Zero(p.currency), nil
 	}
 	total := Amount{}
 	for _, outcome := range p.outcomes {
 		total = total.Add(p.stakedByOutcome[outcome])
 	}
-	stakedWinnerOutcome := p.TotalBetOnOutcome(p.winner)
-	if stake.amount.cents > stakedWinnerOutcome.amount.cents {
+	stakedWinnerOutcome := p.stakedByOutcome[p.winner]
+	if stake.cents > stakedWinnerOutcome.cents {
 		return Zero(p.currency), fmt.Errorf("%w : stake %v, winning mass %v", ErrStakeExceedsWinningMass, stake, stakedWinnerOutcome)
 	}
-	result := (stake.amount.cents * total.cents) / stakedWinnerOutcome.amount.cents
+	result := (stake.cents * total.cents) / stakedWinnerOutcome.cents
 	return NewMoney(Amount{cents: result}, p.currency), nil
 }

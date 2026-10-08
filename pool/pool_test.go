@@ -398,7 +398,7 @@ func TestPayoutFor_ReturnsProportionalGain(t *testing.T) {
 			}
 			//when
 
-			got, err := p.PayoutFor(aliceBet)
+			got, err := p.PayoutFor("alice")
 
 			//then
 			if err != nil {
@@ -406,39 +406,10 @@ func TestPayoutFor_ReturnsProportionalGain(t *testing.T) {
 			}
 
 			if want := testMoney(t, c.want); got != want {
-				t.Errorf("PayoutFor(%v) = %v, want %v", aliceBet, got, want)
+				t.Errorf("PayoutFor(alice) = %v, want %v", got, want)
 			}
 		})
 	}
-}
-
-func TestPayoutFor_NobodyBetOnWinner_ReturnsError(t *testing.T) {
-	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
-	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
-	mustPlaceBet(t, p, "carol", "psg", testMoney(t, 10000))
-	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
-		t.Fatalf("setup: resolution refused : %v", err)
-	}
-
-	_, err := p.PayoutFor(testMoney(t, 5000))
-	if !errors.Is(err, pool.ErrStakeExceedsWinningMass) {
-		t.Errorf("got %v, want ErrStakeExceedsWinningMass", err)
-	}
-
-}
-
-func TestPayoutFor_StakeExceedsWinningMass_ReturnsError(t *testing.T) {
-	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
-	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
-	mustPlaceBet(t, p, "carol", "om", testMoney(t, 10000))
-	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
-		t.Fatalf("setup: resolution refused : %v", err)
-	}
-	_, err := p.PayoutFor(testMoney(t, 15000))
-	if !errors.Is(err, pool.ErrStakeExceedsWinningMass) {
-		t.Errorf("err = %v, want ErrStakeExceedsWinningMass", err)
-	}
-
 }
 
 func TestPayoutFor_LoserClaims_ReturnsZero(t *testing.T) {
@@ -448,7 +419,7 @@ func TestPayoutFor_LoserClaims_ReturnsZero(t *testing.T) {
 	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
 		t.Fatalf("setup: resolution refused : %v", err)
 	}
-	got, err := p.PayoutFor(testMoney(t, 0))
+	got, err := p.PayoutFor("alice")
 	if err != nil {
 		t.Errorf("Should return zero without error, got : %v", err)
 	}
@@ -457,18 +428,37 @@ func TestPayoutFor_LoserClaims_ReturnsZero(t *testing.T) {
 	}
 }
 
-func TestPayoutFor_ZeroStakeWithNobodyOnWinner_ReturnsZero(t *testing.T) {
+func TestPayoutFor_NobodyBetOnWinner_ReturnsZero(t *testing.T) {
 	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
 	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "carol", "psg", testMoney(t, 10000))
 	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
 		t.Fatalf("setup: resolution refused : %v", err)
 	}
-	got, err := p.PayoutFor(testMoney(t, 0))
+	got, err := p.PayoutFor("alice")
 	if err != nil {
 		t.Errorf("Should return zero without error, got : %v", err)
 	}
 	if got != pool.Zero(testCurrency) {
 		t.Errorf("got :%v , want zero", got)
+	}
+}
+
+func TestPayoutFor_LoserWithNonZeroStake_ReturnsZero(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "bob", "om", testMoney(t, 10000))
+	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
+		t.Fatalf("setup: resolution refused : %v", err)
+	}
+
+	got, err := p.PayoutFor("alice")
+
+	if err != nil {
+		t.Fatalf("payout refused : %v", err)
+	}
+	if got != pool.Zero(testCurrency) {
+		t.Errorf("PayoutFor(alice) = %v, want zero", got)
 	}
 }
 
