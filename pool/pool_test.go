@@ -513,6 +513,26 @@ func TestPayoutFor_AccountWhoNeverBet_ReturnsZero(t *testing.T) {
 	}
 }
 
+func TestPayoutFor_AccountWithStakesOnSeveralOutcomes_PaidOnWinningOnly(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	mustPlaceBet(t, p, "alice", "om", testMoney(t, 10000))
+	mustPlaceBet(t, p, "bob", "om", testMoney(t, 20000))
+	if err := p.Resolve(pool.ResolverID("oracle1"), "psg"); err != nil {
+		t.Fatalf("setup: resolution refused : %v", err)
+	}
+
+	got, err := p.PayoutFor("alice")
+
+	if err != nil {
+		t.Fatalf("payout refused : %v", err)
+	}
+	// seule la mise sur psg compte : 10 000 × 40 000 / 10 000
+	if want := testMoney(t, 40000); got != want {
+		t.Errorf("PayoutFor(alice) = %v, want %v", got, want)
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
