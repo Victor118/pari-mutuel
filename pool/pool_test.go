@@ -376,37 +376,64 @@ func TestNewPool_BlankCurrency_ReturnsError(t *testing.T) {
 	}
 }
 
+type testBet struct {
+	account pool.AccountID
+	outcome pool.OutcomeID
+	cents   int64
+}
+
 func TestPayoutFor_ReturnsProportionalGain(t *testing.T) {
 	cases := []struct {
-		name                            string
-		aliceOnPsg, carolOnPsg, bobOnOm int64
-		want                            int64
+		name    string
+		bets    []testBet
+		account pool.AccountID
+		want    int64
 	}{
-		{"parts égales, pot de 40 000", 10000, 10000, 20000, 20000},
-		{"côté perdant plus petit", 10000, 10000, 10000, 15000},
+		{
+			name:    "parts égales, pot de 40 000",
+			bets:    []testBet{{"alice", "psg", 10000}, {"carol", "psg", 10000}, {"bob", "om", 20000}},
+			account: "alice",
+			want:    20000,
+		},
+		{
+			name:    "côté perdant plus petit",
+			bets:    []testBet{{"alice", "psg", 10000}, {"carol", "psg", 10000}, {"bob", "om", 10000}},
+			account: "alice",
+			want:    15000,
+		},
+		{
+			name:    "mises différentes sur le gagnant",
+			bets:    []testBet{{"alice", "psg", 10000}, {"carol", "psg", 30000}, {"bob", "om", 40000}},
+			account: "carol",
+			want:    60000,
+		},
+		{
+			name:    "mises cumulées d'un même compte",
+			bets:    []testBet{{"alice", "psg", 6000}, {"alice", "psg", 4000}, {"carol", "psg", 10000}, {"bob", "om", 20000}},
+			account: "alice",
+			want:    20000,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			//given
 			p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
-			aliceBet := testMoney(t, c.aliceOnPsg)
-			mustPlaceBet(t, p, "alice", "psg", aliceBet)
-			mustPlaceBet(t, p, "carol", "psg", testMoney(t, c.carolOnPsg))
-			mustPlaceBet(t, p, "bob", "om", testMoney(t, c.bobOnOm))
+			for _, b := range c.bets {
+				mustPlaceBet(t, p, b.account, b.outcome, testMoney(t, b.cents))
+			}
 			if err := p.Resolve(pool.ResolverID("oracle1"), "psg"); err != nil {
 				t.Fatalf("setup: resolution refused: %v", err)
 			}
-			//when
 
-			got, err := p.PayoutFor("alice")
+			//when
+			got, err := p.PayoutFor(c.account)
 
 			//then
 			if err != nil {
 				t.Fatalf("payout refused : %v", err)
 			}
-
 			if want := testMoney(t, c.want); got != want {
-				t.Errorf("PayoutFor(alice) = %v, want %v", got, want)
+				t.Errorf("PayoutFor(%v) = %v, want %v", c.account, got, want)
 			}
 		})
 	}
@@ -414,17 +441,23 @@ func TestPayoutFor_ReturnsProportionalGain(t *testing.T) {
 
 func TestPayoutFor_LoserClaims_ReturnsZero(t *testing.T) {
 	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
-	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	// Un perdant ne touche rien, que sa mise dépasse la masse gagnante (alice) ou non (dave).
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 50000))
+	mustPlaceBet(t, p, "dave", "psg", testMoney(t, 5000))
 	mustPlaceBet(t, p, "bob", "om", testMoney(t, 10000))
 	if err := p.Resolve(pool.ResolverID("oracle1"), "om"); err != nil {
 		t.Fatalf("setup: resolution refused : %v", err)
 	}
-	got, err := p.PayoutFor("alice")
-	if err != nil {
-		t.Errorf("Should return zero without error, got : %v", err)
-	}
-	if got != pool.Zero(testCurrency) {
-		t.Errorf("got :%v , want zero", got)
+
+	for _, loser := range []pool.AccountID{"alice", "dave"} {
+		got, err := p.PayoutFor(loser)
+		if err != nil {
+			t.Errorf("PayoutFor(%v) refused : %v", loser, err)
+			continue
+		}
+		if got != pool.Zero(testCurrency) {
+			t.Errorf("PayoutFor(%v) = %v, want zero", loser, got)
+		}
 	}
 }
 
