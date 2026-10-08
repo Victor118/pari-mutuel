@@ -159,6 +159,9 @@ func (p *Pool) Cancel(oracle ResolverID) error {
 }
 
 func (p *Pool) PayoutFor(account AccountID) (Money, error) {
+	if p.IsCancelled() {
+		return Zero(p.currency), fmt.Errorf("%w : no payout on a cancelled pool", ErrPoolCancelled)
+	}
 	if _, resolved := p.Winner(); !resolved {
 		return Zero(p.currency), fmt.Errorf("%w : pool %v", ErrNotResolved, p.id)
 	}

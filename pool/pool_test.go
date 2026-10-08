@@ -571,6 +571,23 @@ func TestPayoutFor_UnresolvedPool_ReturnsErrNotResolved(t *testing.T) {
 	}
 }
 
+func TestPayoutFor_CancelledPool_ReturnsErrPoolCancelled(t *testing.T) {
+	p := newTestPool(t, time.Now().AddDate(0, 0, 1), "psg", "om")
+	mustPlaceBet(t, p, "alice", "psg", testMoney(t, 10000))
+	if err := p.Cancel(pool.ResolverID("oracle1")); err != nil {
+		t.Fatalf("setup: cancel refused : %v", err)
+	}
+
+	got, err := p.PayoutFor("alice")
+
+	if !errors.Is(err, pool.ErrPoolCancelled) {
+		t.Errorf("err = %v, want ErrPoolCancelled", err)
+	}
+	if got != pool.Zero(testCurrency) {
+		t.Errorf("PayoutFor(alice) = %v, want zero", got)
+	}
+}
+
 func TestNewPool_EmptyResolver_ShouldFail(t *testing.T) {
 	closesAt := time.Now().AddDate(0, 1, 0)
 	_, err := pool.NewPool(
