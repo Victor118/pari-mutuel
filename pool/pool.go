@@ -29,6 +29,7 @@ var (
 	ErrStakeExceedsWinningMass = errors.New("stake exceeds winning mass")
 	ErrBetAmount               = errors.New("amount should be greater than zero")
 	ErrAccountRequired         = errors.New("account is mandatory")
+	ErrNotResolved             = errors.New("pool not resolved")
 )
 
 type Pool struct {
@@ -158,6 +159,9 @@ func (p *Pool) Cancel(oracle ResolverID) error {
 }
 
 func (p *Pool) PayoutFor(account AccountID) (Money, error) {
+	if _, resolved := p.Winner(); !resolved {
+		return Zero(p.currency), fmt.Errorf("%w : pool %v", ErrNotResolved, p.id)
+	}
 	stake := p.stakes[account][p.winner]
 	if stake.cents == 0 {
 		return Zero(p.currency), nil
